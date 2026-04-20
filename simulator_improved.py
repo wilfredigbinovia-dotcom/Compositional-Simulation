@@ -4919,13 +4919,25 @@ def display_streamlit_app() -> None:
         st.session_state["min_dx_ft"] = 50.0
     # Fix stale thickness_ft that is not a round number (indicates it was
     # computed rather than entered, e.g. 102.54 ft from a previous session bug).
-    _stale_h = st.session_state.get("thickness_ft", 50.0)
+    _stale_h = st.session_state.get("thickness_ft", 5.0)
     if isinstance(_stale_h, (int, float)):
         _h = float(_stale_h)
-        # Valid user entries are always multiples of 5 (the step size in the UI).
-        # Any non-round value is stale/corrupt — reset to default 50 ft.
         if _h != round(_h / 5.0) * 5.0 or _h < 5.0 or _h > 500.0:
-            st.session_state["thickness_ft"] = 50.0
+            st.session_state["thickness_ft"] = 5.0
+    # Reset stale well values that carried over from old session defaults.
+    # Well keys use the pattern w{i}_<field> (e.g. w0_qg, w0_tvd).
+    for _wi in range(4):
+        _wk = f"w{_wi}"
+        _stale_resets = [
+            (f"{_wk}_qg",  5.0,    0.0),    # old default gas rate
+            (f"{_wk}_bhp", 3000.0, 100.0),  # old default BHP
+            (f"{_wk}_thp", 500.0,  14.7),   # old default THP
+            (f"{_wk}_tvd", 8000.0, 100.0),  # old default TVD
+            (f"{_wk}_wht", 60.0,   -60.0),  # old default wellhead temp
+        ]
+        for _skey, _old_val, _new_val in _stale_resets:
+            if _skey in st.session_state and float(st.session_state[_skey]) == _old_val:
+                st.session_state[_skey] = _new_val
     # ─────────────────────────────────────────────────────────────────────────
 
     st.write(
@@ -5855,23 +5867,21 @@ def display_streamlit_app() -> None:
         (float(condensate_api_gravity)  <= 1.0,   "Components & PVT → Condensate API gravity must be entered"),
         # Initial conditions
         (float(p_init_psia)     <= 100.0, "Initial Conditions → Initial reservoir pressure must be entered"),
-        # Producer well — check each defined producer
+        # Producer well — check each defined producer using the already-built wells_config
         *[
-            (float(st.session_state.get(f"well_{_wi}_bhp", 100.0)) <= 100.0
-             and st.session_state.get(f"well_{_wi}_ctrl", "bhp") == "bhp",
-             f"Producer Well {_wi+1} → BHP target must be entered")
-            for _wi in range(int(st.session_state.get("n_producers", 1)))
+            (w["control_mode"] == "bhp" and float(w["bhp_psia"]) <= 100.0,
+             f"Producer Well {_wi+1} → BHP target must be entered (currently at minimum 100 psia)")
+            for _wi, w in enumerate(wells_config)
         ],
         *[
-            (float(st.session_state.get(f"well_{_wi}_qg", 0.0)) <= 0.0
-             and st.session_state.get(f"well_{_wi}_ctrl", "bhp") == "gas_rate",
+            (w["control_mode"] == "gas_rate" and float(w["target_gas_rate_mmscf_day"]) <= 0.0,
              f"Producer Well {_wi+1} → Gas rate target must be entered")
-            for _wi in range(int(st.session_state.get("n_producers", 1)))
+            for _wi, w in enumerate(wells_config)
         ],
         *[
-            (float(st.session_state.get(f"well_{_wi}_tvd", 100.0)) <= 100.0,
-             f"Producer Well {_wi+1} → TVD must be entered")
-            for _wi in range(int(st.session_state.get("n_producers", 1)))
+            (float(w["tvd_ft"]) <= 100.0,
+             f"Producer Well {_wi+1} → TVD must be entered (currently at minimum 100 ft)")
+            for _wi, w in enumerate(wells_config)
         ],
     ]
     for condition, msg in _sentinel_checks:
