@@ -4923,9 +4923,10 @@ def display_streamlit_app() -> None:
     for _wi in range(4):
         _wk = f"w{_wi}"
         _stale_resets = [
-            (f"{_wk}_bhp", 3000.0, 100.0),  # old default BHP
-            (f"{_wk}_thp", 500.0,  14.7),   # old default THP
-            (f"{_wk}_tvd", 8000.0, 100.0),  # old default TVD
+            (f"{_wk}_bhp",     3000.0, 100.0),  # old default BHP
+            (f"{_wk}_min_bhp",  500.0,  50.0),  # old default min BHP
+            (f"{_wk}_thp",      500.0,  14.7),  # old default THP
+            (f"{_wk}_tvd",     8000.0, 100.0),  # old default TVD
         ]
         for _skey, _old_val, _new_val in _stale_resets:
             if _skey in st.session_state and float(st.session_state[_skey]) == _old_val:
@@ -5478,7 +5479,7 @@ def display_streamlit_app() -> None:
                 _thp   = float(st.number_input("THP target (psia)",           min_value=14.7,   max_value=10000.0, value=float(st.session_state.get(f"{_wk}_thp",   14.7)),  step=25.0,   disabled=(_ctrl != "thp"),      key=f"{_wk}_thp"))
                 _min_bhp = float(st.number_input(
                     "Minimum BHP (psia)", min_value=50.0, max_value=5000.0,
-                    value=float(st.session_state.get(f"{_wk}_min_bhp", 500.0)),
+                    value=float(st.session_state.get(f"{_wk}_min_bhp", 50.0)),
                     step=50.0, disabled=(_ctrl not in {"gas_rate", "drawdown"}),
                     key=f"{_wk}_min_bhp",
                     help="Floor BHP for gas-rate and drawdown control. Well enters decline when BHP hits this value.",
