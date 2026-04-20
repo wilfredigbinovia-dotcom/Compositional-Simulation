@@ -4923,11 +4923,9 @@ def display_streamlit_app() -> None:
     for _wi in range(4):
         _wk = f"w{_wi}"
         _stale_resets = [
-            (f"{_wk}_qg",  5.0,    0.0),    # old default gas rate
             (f"{_wk}_bhp", 3000.0, 100.0),  # old default BHP
             (f"{_wk}_thp", 500.0,  14.7),   # old default THP
             (f"{_wk}_tvd", 8000.0, 100.0),  # old default TVD
-            (f"{_wk}_wht", 60.0,   -60.0),  # old default wellhead temp
         ]
         for _skey, _old_val, _new_val in _stale_resets:
             if _skey in st.session_state and float(st.session_state[_skey]) == _old_val:
