@@ -3165,24 +3165,23 @@ class CompositionalSimulator1D:
             z_avg    = np.average(tr.z, axis=0, weights=tr.nt)
             z_avg   /= max(float(z_avg.sum()), 1e-12)
             nt_total  = float(tr.nt.sum())
-            pv_hc_tot = float(self.pv.sum()) * max(1.0 - float(np.mean(tr.sw)), 0.0)
+            # Use pv-weighted Sw for accurate HC pore volume
+            pv_hc_tot = float(np.sum(self.pv * (1.0 - tr.sw)))
             if pv_hc_tot > 1e-6 and nt_total > 0.0:
                 pZ_avg    = nt_total * R * self.T / pv_hc_tot
                 p_avg_old = float(np.mean(p_pred))
                 p_avg_new = p_avg_old
-                for _ in range(15):
+                for _ in range(20):
                     Z_avg = float(self.eos.z_factor(
                         z_avg, max(p_avg_new, 14.7), self.T, phase="v"))
                     Z_avg = max(Z_avg, 0.05)
                     p_iter = pZ_avg * Z_avg
-                    if abs(p_iter - p_avg_new) < 0.05:
+                    if abs(p_iter - p_avg_new) < 0.01:
                         break
-                    p_avg_new = 0.5 * (p_avg_new + p_iter)
-                dp_corr   = p_avg_new - p_avg_old
-                # Limit correction: no more than one timestep's worth of
-                # pressure drop (500 psia) and never below abandonment pressure.
+                    p_avg_new = 0.7 * p_avg_new + 0.3 * p_iter
+                dp_corr = p_avg_new - p_avg_old
+                # Apply full MB correction — no artificial clamp.
                 min_p = max(14.7, min((w.min_bhp_psia for w in self.wells), default=14.7))
-                dp_corr = float(np.clip(dp_corr, -500.0, 500.0))
                 p_corrected = np.clip(p_pred + dp_corr, min_p * 0.5, 50000.0)
             else:
                 p_corrected = p_pred.copy()
