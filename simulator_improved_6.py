@@ -2897,16 +2897,25 @@ class CompositionalSimulator1D:
             _response = self.solve_well_control(state)
             _ctrl = _w.control_mode
             if _ctrl == "gas_rate":
-                # Fixed-rate sink distributed across all cells weighted by
-                # accumulation (pv × rho × ct). This prevents the single well
-                # cell from collapsing when the Darcy inter-cell flow can't
-                # redistribute the sink fast enough within one timestep.
+                # Fixed-rate Neumann sink on well cell only.
+                # Guard: if the well solver returns a pwf unrealistically close
+                # to reservoir pressure (condensate blocking), the effective sink
+                # is near zero and pressure stagnates then collapses next step.
+                # In that case fall back to Peaceman coupling with min_bhp floor.
                 _q_sink = float(_response.get("q_total_lbmol_day",
                                 float(_response.get("qg_lbmol_day", 0.0)) +
                                 float(_response.get("qo_lbmol_day", 0.0))))
-                acc_sum = float(np.sum(acc_scale))
-                if acc_sum > 1e-12:
-                    b -= _q_sink * acc_scale / acc_sum
+                _p_cell = float(state.pressure[_wi])
+                _pwf_resp = float(_response.get("pwf_psia", 0.0))
+                _drawdown_frac = (_p_cell - _pwf_resp) / max(_p_cell, 1.0)
+                if _drawdown_frac < 0.01:
+                    # Degenerate: fall back to Peaceman with min_bhp
+                    _mob = self.phase_mobility_data(state, _wi)
+                    _rho_RB = rho_cell[_wi] * FT3_PER_STB
+                    _Jw = self.peaceman_well_index(_wi) * _mob["lam_t"] * _rho_RB
+                    _pwf_fb = max(float(getattr(_w, "min_bhp_psia", 50.0)), 14.7)
+                    ab[1, _wi] += _Jw
+                    b[_wi]     += _Jw * _pwf_fb
                 else:
                     b[_wi] -= _q_sink
             else:
