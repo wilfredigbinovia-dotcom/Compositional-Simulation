@@ -5299,7 +5299,9 @@ def display_streamlit_app() -> None:
         thickness_ft = st.number_input("Reservoir thickness (ft)", min_value=5.0, max_value=500.0, value=float(st.session_state.get("thickness_ft", 5.0)), step=5.0, key="thickness_ft")
         equivalent_width_ft = 2.0 * radius_ft
         area_ft2 = math.pi * radius_ft ** 2   # cylindrical drainage area: π × r²
-        refined_cells = st.number_input("Refined cells near well", min_value=2, max_value=max(int(nx) - 1, 2), value=int(st.session_state.get("refined_cells", min(10, int(nx)-1))), step=1, key="refined_cells")
+        _rc_max = max(int(nx) - 1, 2)
+        _rc_val = max(2, min(int(st.session_state.get("refined_cells", min(10, int(nx)-1))), _rc_max))
+        refined_cells = st.number_input("Refined cells near well", min_value=2, max_value=_rc_max, value=_rc_val, step=1, key="refined_cells")
         min_dx_ft = st.number_input("Minimum near-well cell size (ft)", min_value=1.0, max_value=500.0, value=float(st.session_state.get("min_dx_ft", 50.0)), step=5.0, key="min_dx_ft")
         growth = st.number_input("LGR growth factor", min_value=1.05, max_value=3.0, value=float(st.session_state.get("growth", 1.45)), step=0.05, key="growth")
         st.caption(f"Equivalent model width = {equivalent_width_ft:,.2f} ft")
