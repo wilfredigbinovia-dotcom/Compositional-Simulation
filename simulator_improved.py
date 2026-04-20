@@ -5469,7 +5469,7 @@ def display_streamlit_app() -> None:
                 _ctrl_label = st.selectbox("Control mode", list(_control_map.keys()), index=0, key=f"{_wk}_ctrl")
                 _ctrl  = _control_map[_ctrl_label]
                 _bhp   = float(st.number_input("BHP target (psia)",          min_value=100.0,  max_value=20000.0, value=float(st.session_state.get(f"{_wk}_bhp",  100.0)), step=100.0,  disabled=(_ctrl != "bhp"),      key=f"{_wk}_bhp"))
-                _dd    = float(st.number_input("Drawdown target (psi)",       min_value=1.0,    max_value=10000.0, value=float(st.session_state.get(f"{_wk}_dd",    0.0)),  step=10.0,   disabled=(_ctrl != "drawdown"), key=f"{_wk}_dd"))
+                _dd    = float(st.number_input("Drawdown target (psi)",       min_value=1.0,    max_value=10000.0, value=float(st.session_state.get(f"{_wk}_dd",    1.0)),  step=10.0,   disabled=(_ctrl != "drawdown"), key=f"{_wk}_dd"))
                 _qg    = float(st.number_input("Target gas rate (MMscf/day)", min_value=0.0,    max_value=5000.0,  value=float(st.session_state.get(f"{_wk}_qg",    0.0)),    step=0.5,    disabled=(_ctrl != "gas_rate"), key=f"{_wk}_qg"))
                 _thp   = float(st.number_input("THP target (psia)",           min_value=14.7,   max_value=10000.0, value=float(st.session_state.get(f"{_wk}_thp",   14.7)),  step=25.0,   disabled=(_ctrl != "thp"),      key=f"{_wk}_thp"))
                 _min_bhp = float(st.number_input(
