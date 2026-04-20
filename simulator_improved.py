@@ -3162,26 +3162,26 @@ class CompositionalSimulator1D:
         # Per-cell correction fails because inter-cell fluxes redistribute moles
         # between cells, creating artificial gradients opposite to reality.
         try:
-            z_avg    = np.average(tr.z, axis=0, weights=tr.nt)
-            z_avg   /= max(float(z_avg.sum()), 1e-12)
+            z_avg     = np.average(tr.z, axis=0, weights=tr.nt)
+            z_avg    /= max(float(z_avg.sum()), 1e-12)
             nt_total  = float(tr.nt.sum())
-            # Use pv-weighted Sw for accurate HC pore volume
             pv_hc_tot = float(np.sum(self.pv * (1.0 - tr.sw)))
             if pv_hc_tot > 1e-6 and nt_total > 0.0:
-                pZ_avg    = nt_total * R * self.T / pv_hc_tot
-                p_avg_old = float(np.mean(p_pred))
-                p_avg_new = p_avg_old
-                for _ in range(20):
-                    Z_avg = float(self.eos.z_factor(
-                        z_avg, max(p_avg_new, 14.7), self.T, phase="v"))
-                    Z_avg = max(Z_avg, 0.05)
-                    p_iter = pZ_avg * Z_avg
-                    if abs(p_iter - p_avg_new) < 0.01:
+                # Target: p_new such that p_new/Z(p_new) = nt*R*T/pv_hc
+                pZ_target = nt_total * R * self.T / pv_hc_tot
+                # Start from step-start pressure (not p_pred which may be wrong)
+                p_solve = float(np.mean(state.pressure))
+                for _ in range(40):
+                    Z_solve = float(self.eos.z_factor(
+                        z_avg, max(p_solve, 14.7), self.T, phase="v"))
+                    Z_solve  = max(Z_solve, 0.05)
+                    p_new    = pZ_target * Z_solve
+                    if abs(p_new - p_solve) < 0.1:
                         break
-                    p_avg_new = 0.7 * p_avg_new + 0.3 * p_iter
-                dp_corr = p_avg_new - p_avg_old
-                # Apply full MB correction — no artificial clamp.
-                min_p = max(14.7, min((w.min_bhp_psia for w in self.wells), default=14.7))
+                    p_solve  = 0.5 * p_solve + 0.5 * p_new
+                # Shift all cells by the same scalar to preserve Darcy gradient
+                dp_corr     = p_solve - float(np.mean(p_pred))
+                min_p       = max(14.7, min((w.min_bhp_psia for w in self.wells), default=14.7))
                 p_corrected = np.clip(p_pred + dp_corr, min_p * 0.5, 50000.0)
             else:
                 p_corrected = p_pred.copy()
