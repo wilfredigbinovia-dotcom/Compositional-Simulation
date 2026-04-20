@@ -4917,13 +4917,7 @@ def display_streamlit_app() -> None:
     _stale_dx = st.session_state.get("min_dx_ft", 50.0)
     if isinstance(_stale_dx, (int, float)) and float(_stale_dx) < 20.0:
         st.session_state["min_dx_ft"] = 50.0
-    # Fix stale thickness_ft that is not a round number (indicates it was
-    # computed rather than entered, e.g. 102.54 ft from a previous session bug).
-    _stale_h = st.session_state.get("thickness_ft", 5.0)
-    if isinstance(_stale_h, (int, float)):
-        _h = float(_stale_h)
-        if _h != round(_h / 5.0) * 5.0 or _h < 5.0 or _h > 500.0:
-            st.session_state["thickness_ft"] = 5.0
+
     # Reset stale well values that carried over from old session defaults.
     # Well keys use the pattern w{i}_<field> (e.g. w0_qg, w0_tvd).
     for _wi in range(4):
@@ -5308,7 +5302,7 @@ def display_streamlit_app() -> None:
         nx = st.number_input("Number of grid cells", min_value=10, max_value=200, value=int(st.session_state.get("nx", 10)), step=1, key="nx")
         length_ft = st.number_input("Reservoir length (ft)", min_value=500.0, max_value=20000.0, value=float(st.session_state.get("length_ft", 500.0)), step=100.0, key="length_ft")
         radius_ft = st.number_input("Equivalent drainage radius (ft)", min_value=1.0, max_value=100000.0, value=float(st.session_state.get("radius_ft", 1.0)), step=10.0, key="radius_ft")
-        thickness_ft = st.number_input("Reservoir thickness (ft)", min_value=5.0, max_value=500.0, value=float(st.session_state.get("thickness_ft", 5.0)), step=5.0, key="thickness_ft")
+        thickness_ft = st.number_input("Reservoir thickness (ft)", min_value=5.0, max_value=500.0, value=float(st.session_state.get("thickness_ft", 5.0)), step=0.1, format="%.1f", key="thickness_ft")
         equivalent_width_ft = 2.0 * radius_ft
         area_ft2 = math.pi * radius_ft ** 2   # cylindrical drainage area: π × r²
         _rc_max = max(int(nx) - 1, 2)
