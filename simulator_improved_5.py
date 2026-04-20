@@ -3174,8 +3174,6 @@ class CompositionalSimulator1D:
         # between cells, creating artificial gradients opposite to reality.
         _mb_debug = {}
         try:
-            z_avg     = np.average(tr.z, axis=0, weights=tr.nt)
-            z_avg    /= max(float(z_avg.sum()), 1e-12)
             nt_total  = float(tr.nt.sum())
             pv_hc_tot = float(np.sum(self.pv * (1.0 - tr.sw)))
             _mb_debug["nt_total"]   = nt_total
@@ -3185,11 +3183,17 @@ class CompositionalSimulator1D:
             if pv_hc_tot > 1e-6 and nt_total > 0.0:
                 pZ_target = nt_total * R * self.T / pv_hc_tot
                 _mb_debug["pZ_target"] = pZ_target
+                # Use step-start composition for Z evaluation — the well-cell
+                # composition after transport can be heavy-skewed and pick a
+                # liquid EOS root. The bulk reservoir composition changes slowly
+                # and always gives a clean gas root above the dew point.
+                z_for_eos = np.average(state.z, axis=0, weights=state.nt)
+                z_for_eos /= max(float(z_for_eos.sum()), 1e-12)
                 p_solve = float(np.mean(state.pressure))
                 for _ in range(40):
                     Z_solve = float(self.eos.z_factor(
-                        z_avg, max(p_solve, 14.7), self.T, phase="v"))
-                    Z_solve  = max(Z_solve, 0.05)
+                        z_for_eos, max(p_solve, 14.7), self.T, phase="v"))
+                    Z_solve  = max(Z_solve, 0.6)   # hard floor: gas Z never below 0.6
                     p_new    = pZ_target * Z_solve
                     if abs(p_new - p_solve) < 0.1:
                         break
