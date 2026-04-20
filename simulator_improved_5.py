@@ -2885,22 +2885,31 @@ class CompositionalSimulator1D:
             b[ai]     += Jaq * p_aq
 
         # Producer well coupling
-        # WI from _compute_peaceman_wi already includes the 0.00708 factor,
-        # so J_w = WI * lam_t * rho  [lbmol/day/psi].
-        # The 0.00708 constant converts md·ft/cp·psi → RB/day, so rho must be
-        # in lbmol/RB here (not lbmol/ft³ as used in the accumulation term).
+        # For BHP/drawdown/THP control: standard Peaceman coupling J*(p - pwf).
+        # For gas-rate control: treat as fixed-rate Neumann sink q [lbmol/day]
+        # added directly to the RHS. This avoids the instability where a large
+        # J*(p-pwf) term dominates the accumulation and collapses pressure.
         orig_well = self.well
         for _w in self.wells:
             self.well = _w
             self._mobility_cache = {}
             _wi  = _w.cell_index
-            _mob = self.phase_mobility_data(state, _wi)
-            _rho_RB = rho_cell[_wi] * FT3_PER_STB   # lbmol/ft³ → lbmol/RB
-            _Jw  = self.peaceman_well_index(_wi) * _mob["lam_t"] * _rho_RB
             _response = self.solve_well_control(state)
-            _pwf = float(_response["pwf_psia"])
-            ab[1, _wi] += _Jw
-            b[_wi]     += _Jw * _pwf
+            _ctrl = _w.control_mode
+            if _ctrl == "gas_rate":
+                # Fixed-rate sink: q_total in lbmol/day goes straight to RHS
+                _q_sink = float(_response.get("q_total_lbmol_day",
+                                float(_response.get("qg_lbmol_day", 0.0)) +
+                                float(_response.get("qo_lbmol_day", 0.0))))
+                b[_wi] -= _q_sink   # subtract from RHS (sink)
+            else:
+                # BHP/drawdown/THP: standard Peaceman pressure coupling
+                _mob = self.phase_mobility_data(state, _wi)
+                _rho_RB = rho_cell[_wi] * FT3_PER_STB
+                _Jw  = self.peaceman_well_index(_wi) * _mob["lam_t"] * _rho_RB
+                _pwf = float(_response["pwf_psia"])
+                ab[1, _wi] += _Jw
+                b[_wi]     += _Jw * _pwf
         self.well = orig_well
         self._mobility_cache = {}
 
