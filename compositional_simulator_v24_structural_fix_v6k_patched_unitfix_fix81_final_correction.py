@@ -606,7 +606,7 @@ class Well:
             raise ValueError("Well cell_index must be non-negative")
         if self.min_bhp_psia < 14.7:
             raise ValueError("min_bhp_psia must be ≥ 14.7 psia (atmospheric)")
-        if self.bhp_psia < self.min_bhp_psia:
+        if self.control_mode == "bhp" and self.bhp_psia < self.min_bhp_psia:
             raise ValueError(f"bhp_psia ({self.bhp_psia:.1f}) must be ≥ min_bhp_psia ({self.min_bhp_psia:.1f})")
         if self.target_gas_rate_mmscf_day < 0.0:
             raise ValueError("target_gas_rate_mmscf_day must be non-negative")
