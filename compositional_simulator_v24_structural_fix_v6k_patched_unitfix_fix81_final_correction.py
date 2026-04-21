@@ -25,7 +25,7 @@ SCF_PER_LBMOL = R * T_STD_R / P_STD_PSIA
 MM_PER_ONE = 1.0e-6
 
 # Liquid reporting assumptions
-CONDENSATE_DENSITY_LBFT3 = 50.0
+CONDENSATE_DENSITY_LBFT3 = 50.0  # fallback only — always pass user API gravity explicitly
 WATER_DENSITY_LBFT3 = 62.4
 FT3_PER_STB = 5.614583333333333
 
@@ -1252,7 +1252,7 @@ def rankine_to_fahrenheit(temperature_r: float) -> float:
     return float(temperature_r) - 459.67
 
 
-def liquid_lbmol_day_to_stb_day(rate_lbmol_day: float, liquid_comp: np.ndarray, mw_components: np.ndarray, density_lbft3: float = CONDENSATE_DENSITY_LBFT3) -> float:
+def liquid_lbmol_day_to_stb_day(rate_lbmol_day: float, liquid_comp: np.ndarray, mw_components: np.ndarray, density_lbft3: float) -> float:
     liquid_comp = np.asarray(liquid_comp, dtype=float)
     liquid_comp = liquid_comp / max(np.sum(liquid_comp), 1e-12)
     mw_mix = float(np.dot(liquid_comp, mw_components))
@@ -4049,7 +4049,9 @@ def compute_volumetrics(
             _, _, _, mw_arr = fluid.critical_arrays()
             mw_liq       = float(np.dot(x, mw_arr))
             liq_lbmol    = giip_lbmol * max(1.0 - beta, 0.0)
-            liq_stb      = liq_lbmol * mw_liq / CONDENSATE_DENSITY_LBFT3 / FT3_PER_STB
+            _cond_api    = float(getattr(getattr(sim, 'reporting', None), 'condensate_api_gravity', 50.0))
+            _cond_rho    = api_gravity_to_density_lbft3(_cond_api)
+            liq_stb      = liq_lbmol * mw_liq / _cond_rho / FT3_PER_STB
             gas_mmscf    = giip_bscf * 1000.0
             if gas_mmscf > 1e-6 and liq_stb > 0.0:
                 cgr_stb_mmscf = liq_stb / gas_mmscf
