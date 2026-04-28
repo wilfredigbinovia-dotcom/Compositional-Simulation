@@ -2864,48 +2864,51 @@ class CompositionalSimulator1D:
         # distance), making that product π×r²×length_ft — the wrong bulk volume.
         pv_cell = self.pv
 
+        # Pre-compute two-phase effective compressibility for all cells.
+        # Reuses flash results already computed for this state to avoid redundant EOS calls.
+        # cg_eff = d(p*beta/Z)/dP / (p*beta/Z) — captures gas expansion + condensate revaporisation.
+        _cg_cache = {}  # keyed by cell index
+
+        # Build pZ values at current pressure using cached flash results
+        _pZ_cur = np.zeros(n)
+        _beta_cur = np.zeros(n)
         for i in range(n):
             Pi = max(float(p_old[i]), 14.7)
             try:
-                Zi = float(self.eos.z_factor(state.z[i], Pi, self.T, phase="v"))
-                Zi = max(Zi, 0.05)
+                _fl = self.cell_flash_cached(state, i)
+                _beta_cur[i] = float(_fl.get("beta", 1.0))
+                _Zi = float(self.eos.z_factor(state.z[i], Pi, self.T, phase="v"))
+                _Zi = max(_Zi, 0.05)
+                _pZ_cur[i] = Pi * _beta_cur[i] / _Zi
             except Exception:
-                Zi = max(Pi * 0.85 / max(Pi, 1.0), 0.05)
-            # rho from actual mole inventory — correct in two-phase cells where
-            # both gas and condensate are present. Gas-only Z gives wrong rho
-            # below dew point and makes acc_scale too small → pressure over-depletes.
-            _sw_i = max(float(state.sw[i]), 0.0)
-            _pv_hc_i = max(pv_cell[i] * (1.0 - _sw_i), 1e-12)
-            _nt_i = max(float(state.nt[i]), 1e-12)
-            rho_cell[i] = _nt_i / _pv_hc_i   # lbmol/ft³ — from actual inventory
+                _beta_cur[i] = 1.0
+                _pZ_cur[i] = Pi / 0.87
 
-            # Real gas compressibility: cg = 1/P - (1/Z)(dZ/dP)
-            # Use centred finite difference for dZ/dP from the EOS.
-            # Step size: 1% of P, clamped to [5, 200] psia for numerical stability.
-            dP_num = float(np.clip(Pi * 0.01, 5.0, 200.0))
+        for i in range(n):
+            Pi = max(float(p_old[i]), 14.7)
+            _sw_i    = max(float(state.sw[i]), 0.0)
+            _pv_hc_i = max(pv_cell[i] * (1.0 - _sw_i), 1e-12)
+            _nt_i    = max(float(state.nt[i]), 1e-12)
+            rho_cell[i] = _nt_i / _pv_hc_i
+
+            # Two-phase effective compressibility using one low-side flash per cell.
+            # We share the current-pressure flash from the cache above.
+            dP_num = float(np.clip(Pi * 0.05, 20.0, 300.0))
             try:
-                Zi_hi = float(self.eos.z_factor(state.z[i], Pi + dP_num, self.T, phase="v"))
-                Zi_lo = float(self.eos.z_factor(state.z[i], max(Pi - dP_num, 14.7), self.T, phase="v"))
-                dZdP  = (Zi_hi - Zi_lo) / (2.0 * dP_num)
-                cg_i  = 1.0 / Pi - dZdP / max(Zi, 1e-6)
-                cg_i  = max(cg_i, 5e-7)   # floor: always positive
+                Pi_lo = max(Pi - dP_num, 14.7)
+                # Only do a new flash at Pi_lo — reuse current flash from cache
+                fl_lo = self.flash.flash(state.z[i], Pi_lo, self.T)
+                beta_lo = float(fl_lo.get("beta", 1.0))
+                Zlo = float(self.eos.z_factor(state.z[i], Pi_lo, self.T, phase="v"))
+                Zlo = max(Zlo, 0.05)
+                pZ_lo = Pi_lo * beta_lo / Zlo
+                d_pZ_dP = (_pZ_cur[i] - pZ_lo) / max(Pi - Pi_lo, 1.0)
+                cg_i = max(d_pZ_dP / max(_pZ_cur[i], 1e-6), 1.0 / Pi)
             except Exception:
-                cg_i = 1.0 / Pi            # fallback to ideal gas
+                cg_i = 1.0 / Pi
+
             ct_i = cg_i + cr
             acc_scale[i] = rho_cell[i] * ct_i * pv_cell[i] / max(dt_days, 1e-12)
-
-        # Diagnostic: log acc_scale sum for first step at each pressure decade
-        try:
-            import sys
-            _p_avg = float(np.mean(p_old))
-            if abs(_p_avg - round(_p_avg/500)*500) < 50:  # near each 500 psia mark
-                _acc_sum = float(np.sum(acc_scale))
-                _nt_sum  = float(np.sum(state.nt))
-                _sw_avg  = float(np.mean(state.sw))
-                print(f"[ACC P={_p_avg:.0f}] acc_sum={_acc_sum:.2f} nt_sum={_nt_sum:.3e} "
-                      f"sw_avg={_sw_avg:.4f} dt={dt_days:.2f}", file=sys.stderr, flush=True)
-        except Exception:
-            pass
 
         # ── Build the tridiagonal system ──────────────────────────────────────
         # Darcy's law in field units:
@@ -3681,36 +3684,6 @@ class CompositionalSimulator1D:
 
             # Transition diagnostic: print key values when P drops > 20% in one step
             state_new, summary, accepted_dt, retries = self.adaptive_step(state, next_dt)
-            _p_before = float(np.mean(state.pressure))
-            _p_after  = float(np.mean(state_new.pressure))
-            # Log key state variables every 50 steps for diagnosis
-            if int(t) % 200 == 0 or (_p_before > 100 and _p_after < _p_before * 0.80):
-                import sys
-                print(f"[STATE t={t:.0f}d] P_avg={_p_before:.1f} sw_avg={float(np.mean(state.sw)):.4f} "
-                      f"nt_tot={float(state.nt.sum()):.3e} nw_tot={float(state.nw.sum()):.3e} "
-                      f"sg_max_avg={float(np.mean(state.sg_max)):.4f} krg0={krg_0:.4f}",
-                      file=sys.stderr, flush=True)
-            if _p_before > 100 and _p_after < _p_before * 0.80:
-                import sys
-                _wi = self.wells[0].cell_index if self.wells else 0
-                _q  = float(summary.get("well_rate_total", 0))
-                _nt = float(state.nt.sum())
-                _nt_new = float(state_new.nt.sum())
-                # Also get the well response to see q_total source
-                try:
-                    _rsp = self.solve_well_control(state)
-                    _q_rsp = float(_rsp.get("q_total_lbmol_day", -1))
-                    _pwf_rsp = float(_rsp.get("pwf_psia", -1))
-                    _dp_rsp = float(_rsp.get("dp_psia", -1))
-                    _p_cell = float(state.pressure[_wi])
-                except Exception:
-                    _q_rsp = _pwf_rsp = _dp_rsp = _p_cell = -1
-                print(f"[COLLAPSE t={t:.0f}d] P: {_p_before:.1f}→{_p_after:.1f} psia "
-                      f"dt={accepted_dt:.2f}d q_summary={_q:.1f} q_response={_q_rsp:.1f} "
-                      f"pwf={_pwf_rsp:.1f} dp={_dp_rsp:.1f} p_cell={_p_cell:.1f} "
-                      f"nt: {_nt:.3e}→{_nt_new:.3e} krg0={krg_0:.4f} retries={retries}",
-                      file=sys.stderr, flush=True)
-
             t_new = t + accepted_dt
             self._set_cache_state(state_new)
             self._current_time_days = t_new
