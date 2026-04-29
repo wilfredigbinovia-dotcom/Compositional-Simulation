@@ -5518,11 +5518,16 @@ def display_streamlit_app() -> None:
         st.caption("Paste pressure-dependent PVT data below. Pressure should be in psig and gas density in lb/ft³ before pasting. If Reservoir CGR or Vapour CGR is provided, the simulator will use that table to report condensate rate versus pressure.")
         pvt_editor_key = "flash_pvt_table_editor"
         pvt_editor_seed_key = "flash_pvt_table_editor_seed"
+        # Clear stale seed that had Dew Point column
+        if pvt_editor_seed_key in st.session_state:
+            _seed = st.session_state[pvt_editor_seed_key]
+            if 'Dew Point' in _seed.columns:
+                del st.session_state[pvt_editor_seed_key]
         if pvt_editor_seed_key not in st.session_state:
             st.session_state[pvt_editor_seed_key] = pd.DataFrame([
                 {"Pressure": "", "Gas FVF": "", "Gas Viscosity": "", "Gas Z Factor": "", "Gas Density": "",
                  "Oil FVF": "", "Oil Viscosity": "", "Solution GOR": "", "Vapour CGR": "",
-                 "Reservoir CGR": "", "Dew Point": ""}
+                 "Reservoir CGR": ""}
                 for _ in range(8)
             ])
         pvt_df = st.data_editor(
